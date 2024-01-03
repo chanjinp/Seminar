@@ -3,13 +3,12 @@
 # 응용 EBO의 경우 STA의 수만큼 RU와 관계를 로그 관계로 풀어서 우선 순위의 범위를 동적으로 적용
 #
 import random
-import heapq
 from turtle import color
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-max_priority_queue = []
+eboList = []
 
 NUM_SIM = 1  # 시뮬레이션 반복 수
 NUM_DTI = 100000  # 1번 시뮬레이션에서 수행될 Data Transmission Interval 수
@@ -69,12 +68,13 @@ class Station:
         self.ru = 0  # 할당된 RU
         self.cw = MIN_OCW  # 초기 OCW
         self.bo = random.randrange(0, self.cw)  # Backoff Counter
-        self.ebo = 0 #초기 EBO 값은 0으로 할당되고 RU 할당 과정에서 set
+        self.ebo = -1  # EBO 기본 값 -1으로 고정
         self.tx_status = False  # True 전송 시도, False 전송 시도 X
         self.suc_status = False  # True 전송 성공, False 전송 실패 [충돌]
         self.delay = 0
         self.retry = 0
         self.data_size = 0  # 데이터 사이즈 (bytes)
+        self.busyTone = False # BusyTone 신호 수신을 여부
 
 
 def createSTA(USER):
@@ -84,15 +84,38 @@ def createSTA(USER):
 
 
 def allocationRA_RU():
-    ebo = random.randrange(0, RU)
     for sta in stationList:
         if (sta.bo <= 0):  # 백오프 타이머가 0보다 작아졌을 때
-            sta.tx_status = True  # 전송 시도
+            # sta.tx_status = True  # 전송 시도
             sta.ru = random.randrange(0, NUM_RU)  # 랜덤으로 RU 할당
+            sta.ebo = random.randrange(0, RU) # 우선순위 RU 범위만큼 랜덤 할당
+            eboList.append(sta)
         else:
             sta.bo -= NUM_RU  # 백오프타이머 감소 [RU의 수만큼 점차 감소]
             sta.tx_status = False  # 전송 시도 하지 않음.
+    checkEBO()
+def checkEBO():
+    for i in range(0, len(eboList)):
+        sta = eboList[i]
+        if(len(eboList) == 1): #하나만 들어왔는 경우에는 할당 상관없이 전송 가능
+            sta.tx_status = True
+        else:
+            for j in range(i+1, len(eboList)):
+                target = eboList[j]
+                if(sta.busyTone == False): #자신이 BusyTone 신호를 받지 않았을 때 전송을 시도할 수 있음
+                    if(sta.ru == target.ru and sta.ebo > target.ebo): #선택한 RU가 같고 EBO 우선 순위가 크다면
+                        sta.tx_status = True # 전송을 시도
+                        target.busyTone = True # 비교 대상은 BusyTone을 수신했다고 생각
 
+                    if(sta.ru == target.ru and sta.ebo < target.ebo): #선택한 RU가 같고 EBO 우선 순위가 작다면
+                        sta.busyTone = True # sta는 BusyTone을 수신했다고 생각
+                        sta.tx_status = False #sta는 BusyTone을 받았으니 전송 시도 x
+
+                    if(sta.ru == target.ru and sta.ebo == target.ebo):
+                        sta.tx_status = True #모든 조건이 같은 경우는 둘 다 Busy 신호를 보내느라 수신 못함
+                    else:
+                        sta.tx_status = True
+                        target.tx_status = True
 
 def setSuccess(ru):
     for sta in stationList:
@@ -130,7 +153,7 @@ def incRUIdle():
 
 def checkCollision():
     coll_RU = []
-    for i in range(0, NUM_RU):
+    for i in range(0, NUM_RU): #배열 초기화 [RU의 수만큼 0으로]
         coll_RU.append(0)
     for sta in stationList:
         if (sta.tx_status == True):  # 전송 시도 중인 STA만 확인
@@ -176,19 +199,23 @@ def changeStaVariables():
                 sta.ru = 0  # 할당된 RU 초기화
                 sta.cw = MIN_OCW  # 초기 OCW -> 기존 OCW의 범위에서 재설정
                 sta.bo = random.randrange(0, sta.cw)  # backoffCounter
+                sta.ebo = -1
                 sta.tx_status = False  # True 전송 시도, False 전송 시도 않음
                 sta.suc_status = False  # True 전송 성공, False 전송 실패(충돌)
                 sta.delay = 0
                 sta.retry = 0
                 sta.data_sz = 0  # 데이터 사이즈 (bytes)
+                sta.busyTone = False #Busy 신호 초기화
             else:  # 전송 실패 (충돌)
                 sta.ru = 0  # 할당된 RU
                 sta.retry += 1
-                if (sta.retry >= RETRY_BS):  # 해당 패킷 폐기 및 변수 값 초기화
+                if (sta.retry >= RETRY_BS or sta.busyTone):  # 해당 패킷 폐기 및 변수 값 초기화
                     sta.cw = MIN_OCW  # 초기 OCW
+                    sta.ebo = -1  # 우선순위 초기화
                     sta.retry = 0
                     sta.delay = 0
                     sta.data_sz = 0  # 데이터 사이즈 (bytes)
+                    sta.busyTone = False #Busy 신호 받은 것들 초기화
                 else:
                     sta.cw *= 2
                     if (sta.cw > MAX_OCW):
@@ -196,9 +223,10 @@ def changeStaVariables():
                 sta.bo = random.randrange(0, sta.cw)  # backoffCounter
                 sta.tx_status = False  # True 전송 시도, False 전송 시도 않음
                 sta.suc_status = False  # True 전송 성공, False 전송 실패(충돌)
-
+    eboList.clear() #EBO 리스트 초기화
 
 def print_Performance():
+
     PKS_coll_rate = (Stats_PKT_Collision / Stats_PKT_TX_Trial) * 100
     PKS_throughput = (Stats_PKT_Success * PACKET_SIZE * 8) / (NUM_SIM * NUM_DTI * TWT_INTERVAL)
     PKS_delay = (Stats_PKT_Delay / Stats_PKT_Success) * TWT_INTERVAL
@@ -292,7 +320,6 @@ def print_graph():
     plt.close()
 
 def resultClear():
-
     global Stats_PKT_TX_Trial
     global Stats_PKT_Success
     global Stats_PKT_Collision
@@ -331,6 +358,7 @@ def main():
                 changeStaVariables()
         print_Performance()
     print_graph()
+
 main()
 
 # def main():
