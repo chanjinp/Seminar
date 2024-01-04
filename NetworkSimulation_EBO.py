@@ -1,14 +1,11 @@
 # 네트워크 세미나 시뮬레이션 환경 구성
 # 기존 EBO의 경우 우선 순위 범위가 RA-RU의 수만큼 사용
-# 응용 EBO의 경우 STA의 수만큼 RU와 관계를 로그 관계로 풀어서 우선 순위의 범위를 동적으로 적용
-#
+import queue
 import random
 from turtle import color
 
 import numpy as np
 import matplotlib.pyplot as plt
-
-eboList = []
 
 NUM_SIM = 1  # 시뮬레이션 반복 수
 NUM_DTI = 100000  # 1번 시뮬레이션에서 수행될 Data Transmission Interval 수
@@ -63,18 +60,20 @@ RU_coll_results = []
 # graph x
 x_list = []
 
+
 class Station:
+    # Station에는 EBO의 우선순위를 알 수 있는 EBO 속성과 BusyTone을 수신했는지 여부를 확인하는 속성이 필요
     def __init__(self):
         self.ru = 0  # 할당된 RU
         self.cw = MIN_OCW  # 초기 OCW
         self.bo = random.randrange(0, self.cw)  # Backoff Counter
-        self.ebo = -1  # EBO 기본 값 -1으로 고정
+        self.ebo = -1  # 초기 EBO 값은 default로 -1로 설정
+        self.busytone = False  # 초기 Busytone의 경우
         self.tx_status = False  # True 전송 시도, False 전송 시도 X
         self.suc_status = False  # True 전송 성공, False 전송 실패 [충돌]
         self.delay = 0
         self.retry = 0
         self.data_size = 0  # 데이터 사이즈 (bytes)
-        self.busyTone = False # BusyTone 신호 수신을 여부
 
 
 def createSTA(USER):
@@ -83,39 +82,17 @@ def createSTA(USER):
         stationList.append(sta)
 
 
-def allocationRA_RU():
+def allocationRA_RU():  # Random Ru 할당
     for sta in stationList:
         if (sta.bo <= 0):  # 백오프 타이머가 0보다 작아졌을 때
-            # sta.tx_status = True  # 전송 시도
+            # 백오프 타이머가 0보다 작아진 경우에만 ebo 우선 순위를 부여한다.
             sta.ru = random.randrange(0, NUM_RU)  # 랜덤으로 RU 할당
-            sta.ebo = random.randrange(0, RU) # 우선순위 RU 범위만큼 랜덤 할당
-            eboList.append(sta)
+            sta.ebo = random.randrange(0, RU)  # 표준 EBO의 경우에는 0부터 RU의 수만큼의 범위에서 EBO 우선순위 부여
+            sta.tx_status = True  # 전송 시도
         else:
             sta.bo -= NUM_RU  # 백오프타이머 감소 [RU의 수만큼 점차 감소]
             sta.tx_status = False  # 전송 시도 하지 않음.
-    checkEBO()
-def checkEBO():
-    for i in range(0, len(eboList)):
-        sta = eboList[i]
-        if(len(eboList) == 1): #하나만 들어왔는 경우에는 할당 상관없이 전송 가능
-            sta.tx_status = True
-        else:
-            for j in range(i+1, len(eboList)):
-                target = eboList[j]
-                if(sta.busyTone == False): #자신이 BusyTone 신호를 받지 않았을 때 전송을 시도할 수 있음
-                    if(sta.ru == target.ru and sta.ebo > target.ebo): #선택한 RU가 같고 EBO 우선 순위가 크다면
-                        sta.tx_status = True # 전송을 시도
-                        target.busyTone = True # 비교 대상은 BusyTone을 수신했다고 생각
 
-                    if(sta.ru == target.ru and sta.ebo < target.ebo): #선택한 RU가 같고 EBO 우선 순위가 작다면
-                        sta.busyTone = True # sta는 BusyTone을 수신했다고 생각
-                        sta.tx_status = False #sta는 BusyTone을 받았으니 전송 시도 x
-
-                    if(sta.ru == target.ru and sta.ebo == target.ebo):
-                        sta.tx_status = True #모든 조건이 같은 경우는 둘 다 Busy 신호를 보내느라 수신 못함
-                    else:
-                        sta.tx_status = True
-                        target.tx_status = True
 
 def setSuccess(ru):
     for sta in stationList:
@@ -151,25 +128,33 @@ def incRUIdle():
     Stats_RU_Idle += 1
 
 
-def checkCollision():
-    coll_RU = []
-    for i in range(0, NUM_RU): #배열 초기화 [RU의 수만큼 0으로]
-        coll_RU.append(0)
+def checkCollision():  # 충돌 검사
+    coll_RU = []  # RU 충돌하는지 확인하기 위한 배열
+    pq = queue.PriorityQueue()
+    for i in range(0, NUM_RU):
+        coll_RU.append(pq)
     for sta in stationList:
         if (sta.tx_status == True):  # 전송 시도 중인 STA만 확인
-            coll_RU[int(sta.ru)] += 1  # 선택된 RU의 인덱스 부분에 +1씩 증가 => 만약 2 이상의 값이 있다면 해당 RU는 2개 이상의 STA이 존재 => 충돌
+            coll_RU[int(sta.ru)].put(-sta.ebo, sta)  # 충돌이 일어난 RU에 겹친 것들이 쌓여간다.
     # RU 단위로 충돌 여부 확인
     for i in range(0, RU):  # STA이 할당 가능한 RU의 개수만큼 반복
         incRUTX()  # RU 전송 시도 수 증가
-        if (coll_RU[i] == 1):  # 해당 인덱스의 값이 1인 경우에는 하나의 STA만 할당되었다.
+        if (len(coll_RU[i]) == 1):  # 해당 부분의 배열 길이가 1개인 경우에는 RU의 충돌이 일어나지 않았음.
             setSuccess(i)
             incRUSuccess()
-        elif (coll_RU[i] <= 0):  # 해당 인덱스의 값이 0보다 작은 경우 [= 0인 경우]에는 RU가 할당되지 않았음
+        elif (len(coll_RU[i]) <= 0):  # 해당 인덱스의 값이 0보다 작은 경우 [= 0인 경우]에는 RU가 할당되지 않았음
             incRUIdle()
-        else:
-            setCollision(i)
-            incRUCollision()  # 위의 경우에 제외된 경우에는 충돌이 일어났음
-
+        else:  # 해당 RU 부분에는 충돌이 일어났음
+            max_ebo, sta = pq.get()  # 첫 번째 원소만 가지고 뺌 -> 반전 우선순위이기 때문에 제일 큰 값이 나옴
+            max_ebo *= -1
+            while not pq.empty():
+                ebo, sta = pq.get()  # 우선순위 큐에서 ebo와 sta에 대해서 뽑아냄
+                ebo *= -1
+                if (max_ebo == ebo):  # 해당 경우인 경우에 RU가 겹쳤고 우선순위가 같은 것이 있기 때문에 RU 충돌이 일어남
+                    setCollision(i)
+                    incRUCollision()
+                else:
+                    sta.busyTone = True  # 아닌 경우에는 모든 겹치는 STA에 대해서 busyTone을 수신했다고 가정
 
 def addStats():
     global Stats_PKT_TX_Trial  # 전송 시도 수
@@ -199,23 +184,19 @@ def changeStaVariables():
                 sta.ru = 0  # 할당된 RU 초기화
                 sta.cw = MIN_OCW  # 초기 OCW -> 기존 OCW의 범위에서 재설정
                 sta.bo = random.randrange(0, sta.cw)  # backoffCounter
-                sta.ebo = -1
                 sta.tx_status = False  # True 전송 시도, False 전송 시도 않음
                 sta.suc_status = False  # True 전송 성공, False 전송 실패(충돌)
                 sta.delay = 0
                 sta.retry = 0
                 sta.data_sz = 0  # 데이터 사이즈 (bytes)
-                sta.busyTone = False #Busy 신호 초기화
             else:  # 전송 실패 (충돌)
                 sta.ru = 0  # 할당된 RU
                 sta.retry += 1
-                if (sta.retry >= RETRY_BS or sta.busyTone):  # 해당 패킷 폐기 및 변수 값 초기화
+                if (sta.retry >= RETRY_BS):  # 해당 패킷 폐기 및 변수 값 초기화
                     sta.cw = MIN_OCW  # 초기 OCW
-                    sta.ebo = -1  # 우선순위 초기화
                     sta.retry = 0
                     sta.delay = 0
                     sta.data_sz = 0  # 데이터 사이즈 (bytes)
-                    sta.busyTone = False #Busy 신호 받은 것들 초기화
                 else:
                     sta.cw *= 2
                     if (sta.cw > MAX_OCW):
@@ -223,10 +204,9 @@ def changeStaVariables():
                 sta.bo = random.randrange(0, sta.cw)  # backoffCounter
                 sta.tx_status = False  # True 전송 시도, False 전송 시도 않음
                 sta.suc_status = False  # True 전송 성공, False 전송 실패(충돌)
-    eboList.clear() #EBO 리스트 초기화
+
 
 def print_Performance():
-
     PKS_coll_rate = (Stats_PKT_Collision / Stats_PKT_TX_Trial) * 100
     PKS_throughput = (Stats_PKT_Success * PACKET_SIZE * 8) / (NUM_SIM * NUM_DTI * TWT_INTERVAL)
     PKS_delay = (Stats_PKT_Delay / Stats_PKT_Success) * TWT_INTERVAL
@@ -264,60 +244,56 @@ def print_Performance():
 
 
 def print_graph():
-    for i in range(1, USER_MAX+1):
-        x_list.append(i) #x축 리스트 세팅
+    for i in range(1, USER_MAX + 1):
+        x_list.append(i)  # x축 리스트 세팅
 
-    plt.figure(figsize=(20,10))
+    plt.figure(figsize=(20, 10))
 
-    #PKS 속도
+    # PKS 속도
     plt.subplot(231)
     plt.plot(x_list, PKS_throughput_results, color='blue', marker='o')
     plt.title('Packet Throughput')
     plt.xlabel('Number or STA')
     plt.ylabel('throughput')
 
-    #PKS 충돌율
+    # PKS 충돌율
     plt.subplot(232)
     plt.plot(x_list, PKS_coll_results, color='red', marker='o')
     plt.title('Packet Collision Rate')
     plt.xlabel('Number or STA')
     plt.ylabel('collision rate')
 
-
-    #PKS 지연
+    # PKS 지연
     plt.subplot(233)
     plt.plot(x_list, PKS_dealy_results, color='yellow', marker='o')
     plt.title('Packet delay')
     plt.xlabel('Number or STA')
     plt.ylabel('delay')
 
-
-    #RU idle 비율
+    # RU idle 비율
     plt.subplot(234)
     plt.plot(x_list, RU_idle_results, color='green', marker='o')
     plt.title('RU idle rate')
     plt.xlabel('Number or STA')
     plt.ylabel('idle rate')
 
-
-    #RU 성공률
+    # RU 성공률
     plt.subplot(235)
     plt.plot(x_list, RU_Success_results, color='black', marker='o')
     plt.title('RU Success rate')
     plt.xlabel('Number or STA')
     plt.ylabel('success rate')
 
-
-    #RU 충돌율
+    # RU 충돌율
     plt.subplot(236)
     plt.plot(x_list, RU_coll_results, color='pink', marker='o')
     plt.title('RU collision rate')
     plt.xlabel('Number or STA')
     plt.ylabel('collision rate')
 
-
     plt.show()
     plt.close()
+
 
 def resultClear():
     global Stats_PKT_TX_Trial
@@ -339,48 +315,44 @@ def resultClear():
     Stats_RU_Collision = 0
 
 
-def main():
-    global USER_MAX
-    global current_User
-    USER_MAX = 100
-    for i in range(1, USER_MAX+1):
-        print("======" + str(i) + "번" + "======")
-        current_User = i
-        resultClear()  # 결과들 초기화하는 함수
-        for k in range(0, NUM_SIM):  # 시뮬레이션 횟수
-            stationList.clear()  # stationlist 초기화
-            createSTA(i)  # User의 수가 1일 때부터 100일 때까지 반복
-            for j in range(0, NUM_DTI):
-                incTrial()
-                allocationRA_RU()
-                checkCollision()
-                addStats()
-                changeStaVariables()
-        print_Performance()
-    print_graph()
-
-main()
-
 # def main():
+#     global USER_MAX
 #     global current_User
-#     current_User = 5
-#     for i in range(0, NUM_SIM):
-#         # 시뮬레이션 반복할 때마다 모든 노드 삭제 후 재 생성
-#         stationList.clear()  # 모든 노드 삭제
-#         createSTA(current_User)  # 노드 생성
+#     USER_MAX = 100
+#     for i in range(1, USER_MAX + 1):
+#         print("======" + str(i) + "번" + "======")
+#         current_User = i
+#         resultClear()  # 결과들 초기화하는 함수
+#         for k in range(0, NUM_SIM):  # 시뮬레이션 횟수
+#             stationList.clear()  # stationlist 초기화
+#             createSTA(i)  # User의 수가 1일 때부터 100일 때까지 반복
+#             for j in range(0, NUM_DTI):
+#                 incTrial()  # 모든 STA은 연결이 되었고 전송을 시도한다고 가정
+#                 allocationRA_RU()  # Random한 RU를 할당
+#                 checkCollision()  # 충돌 확인
+#                 addStats()  # 충돌 확인 과정에서 알게된 상태와 전송 성공에 관련해서 상태 추가
+#                 changeStaVariables()  # 결론적으로 전송을 성공했다면 상태 전부 초기화 과정 및 충돌을 했다면 cw의 값을 2배로 조정
+#         print_Performance()  # 시뮬레이션이 끝난 후의 성능 출력
+#     print_graph()  # 모든 시뮬레이션 결과를 그래프로 출력
 #
-#         for j in range(0, NUM_DTI):
-#             # k = 0
-#             # for sta in stationList:
-#             #    print("ID: ", k, "BO: ", sta.bo)
-#             #    k += 1
-#
-#             incTrial()
-#             allocationRA_RU()
-#             checkCollision()
-#             addStats()
-#             changeStaVariables()
-#
-#     print_Performance()
 #
 # main()
+
+def main():
+    global current_User
+    current_User = 5
+    for i in range(0, NUM_SIM):
+        # 시뮬레이션 반복할 때마다 모든 노드 삭제 후 재 생성
+        stationList.clear()  # 모든 노드 삭제
+        createSTA(current_User)  # 노드 생성
+
+        for j in range(0, NUM_DTI):
+            incTrial()
+            allocationRA_RU()
+            checkCollision()
+            addStats()
+            changeStaVariables()
+
+    print_Performance()
+
+main()

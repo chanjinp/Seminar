@@ -1,15 +1,11 @@
 # 네트워크 세미나 시뮬레이션 환경 구성
 # 기존 EBO의 경우 우선 순위 범위가 RA-RU의 수만큼 사용
-# 응용 EBO의 경우 STA의 수만큼 RU와 관계를 로그 관계로 풀어서 우선 순위의 범위를 동적으로 적용
-#
 import random
-import heapq
 from turtle import color
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-max_priority_queue = []
 
 NUM_SIM = 1  # 시뮬레이션 반복 수
 NUM_DTI = 100000  # 1번 시뮬레이션에서 수행될 Data Transmission Interval 수
@@ -69,7 +65,6 @@ class Station:
         self.ru = 0  # 할당된 RU
         self.cw = MIN_OCW  # 초기 OCW
         self.bo = random.randrange(0, self.cw)  # Backoff Counter
-        self.ebo = 0 #초기 EBO 값은 0으로 할당되고 RU 할당 과정에서 set
         self.tx_status = False  # True 전송 시도, False 전송 시도 X
         self.suc_status = False  # True 전송 성공, False 전송 실패 [충돌]
         self.delay = 0
