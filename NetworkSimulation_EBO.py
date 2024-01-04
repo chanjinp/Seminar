@@ -8,7 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 NUM_SIM = 1  # 시뮬레이션 반복 수
-NUM_DTI = 100000  # 1번 시뮬레이션에서 수행될 Data Transmission Interval 수
+# NUM_DTI = 100000  # 1번 시뮬레이션에서 수행될 Data Transmission Interval 수
+NUM_DTI = 10000  # 1번 시뮬레이션에서 수행될 Data Transmission Interval 수
 
 # AP set
 SIFS = 16
