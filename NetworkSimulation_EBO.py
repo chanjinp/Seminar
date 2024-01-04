@@ -207,7 +207,7 @@ def changeStaVariables():
                 elif (sta.busyTone == True):    # BusyTone 신호를 받았다면
                     sta.cw = MIN_OCW    # 초기 OCW
                     sta.ebo = -1    # EBO 초기화
-                    sta.busyTone = False    #BusyTone 수신 초기화
+                    sta.busyTone = False    # BusyTone 수신 초기화
                 else:
                     sta.cw *= 2
                     if (sta.cw > MAX_OCW):
