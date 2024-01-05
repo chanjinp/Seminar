@@ -33,9 +33,14 @@ BA_SZ_us = (BA_SIZE * 8) / (DATA_RATE * 1000)  # 블록 ACK 전송 시간, 단�
 
 # BusyTone
 BT_us = 9 # us
-NUM_BT = NUM_RU
+NUM_BT = 1 # 각 STA은 해당 변수에 맞춰 BT 경쟁을 수행함
+# NUM_BT == 1 --> BT 사용 X
+# NUM_BT > 1  --> BT 사용 O
+NUM_BT_ACC = 0 # throughput 계산 시 BT overhead 계산을 위해 사용되는 변수
 
-TWT_INTERVAL = (BT_us * NUM_BT) + (DIFS + TF_SZ_us + SIFS * 2 + DTI + BA_SZ_us)  # DIFS + 트리거 프레임 전송 시간 + SIFS + DTI + SIFS + Block Ack 전송 시간 => 전체 TWT 시간
+OPTIMAL_COL_RATE = 0.6 # 패킷 단위 성능
+
+TWT_INTERVAL = (DIFS + TF_SZ_us + SIFS * 2 + DTI + BA_SZ_us)  # DIFS + 트리거 프레임 전송 시간 + SIFS + DTI + SIFS + Block Ack 전송 시간 => 전체 TWT 시간
 
 # 성능 변수
 # 패킷 단위 성능
@@ -75,6 +80,7 @@ class Station:
         self.delay = 0
         self.retry = 0
         self.data_size = 0  # 데이터 사이즈 (bytes)
+        self.bt_priority = 0 # 비지톤 우선순위
 
 
 def createSTA(USER):
@@ -82,12 +88,35 @@ def createSTA(USER):
         sta = Station()
         stationList.append(sta)
 
+def adjust_NUM_BT():
+    # NUM_BT 비례제어
+    # NUM_BT 최소값은 1
+
+    ERR_MARGIN = 0.03 # threshold
+    K = 1 # Gain
+
+    # 1. calculate collision rate (패킷 단위 성능)
+    col_rate = (Stats_PKT_Collision / Stats_PKT_TX_Trial) * 100
+
+    # 2. 비례제어
+    error = col_rate - OPTIMAL_COL_RATE
+
+    if (error < -ERR_MARGIN) or (ERR_MARGIN < error):
+
+        NUM_BT = NUM_BT * (1 + K * error)
+
+    # 3. 최대, 최소값 필터링
+    NUM_BT = int(NUM_BT)
+
+    if (NUM_BT < 1):
+        NUM_BT = 1
 
 def allocationRA_RU():
     for sta in stationList:
         if (sta.bo <= 0):  # 백오프 타이머가 0보다 작아졌을 때
             sta.tx_status = True  # 전송 시도
             sta.ru = random.randrange(0, NUM_RU)  # 랜덤으로 RU 할당
+            sta.bt_priority = random.randrange(0, NUM_BT) # 비지톤 우선순위 할당
         else:
             sta.bo -= NUM_RU  # 백오프타이머 감소 [RU의 수만큼 점차 감소]
             sta.tx_status = False  # 전송 시도 하지 않음.
@@ -114,21 +143,27 @@ def checkCollision():
 
 def checkBusyTone():
     
-    min_obo_list = []
+    if NUM_BT == 1:
+        return
+    
+    NUM_BT_ACC += (NUM_BT)
+
+    # 우선순위가 작으수록 높은 것이다
+    min_priority_list = []
     for i in range(0, NUM_RU):
-        min_obo_list.append(0)
+        min_priority_list.append(NUM_BT - 1)
 
     # 각 RU에서 경쟁에서 승리할 수 있는 OBO 값 파악
     for sta in stationList:
         if (sta.tx_status == True):
-            if(sta.bo < min_obo_list[int(sta.ru)]):
-                min_obo_list[int(sta.ru)] = sta.bo
+            if(sta.bt_priority < min_priority_list[int(sta.ru)]):
+                min_priority_list[int(sta.ru)] = sta.bt_priority
     
     # MIN OBO에 해당하는 STA만 전송을 시도하고, 나머지는 전송 포기
     # 전송을 포기한 STA는 동일한 OCW 범위 내에서 랜덤하게 OBO를 초기화
     for sta in stationList:
         if (sta.tx_status == True):
-            if(sta.bo > min_obo_list[int(sta.ru)]):
+            if(sta.bt_priority > min_priority_list[int(sta.ru)]):
                 # 전송 포기
                 sta.tx_status = False
                 sta.suc_status = False
@@ -223,7 +258,7 @@ def changeStaVariables():
 
 def print_Performance():
     PKS_coll_rate = (Stats_PKT_Collision / Stats_PKT_TX_Trial) * 100
-    PKS_throughput = (Stats_PKT_Success * PACKET_SIZE * 8) / (NUM_SIM * NUM_DTI * TWT_INTERVAL)
+    PKS_throughput = (Stats_PKT_Success * PACKET_SIZE * 8) / ((NUM_BT_ACC * BT_us) + (NUM_SIM * NUM_DTI * TWT_INTERVAL)) # BusyTone overhead 합산
     PKS_delay = (Stats_PKT_Delay / Stats_PKT_Success) * TWT_INTERVAL
 
     print("[패킷 단위 성능]")
@@ -348,6 +383,7 @@ def main():
             createSTA(i)  # User의 수가 1일 때부터 100일 때까지 반복
             for j in range(0, NUM_DTI):
                 incTrial()
+                adjust_NUM_BT() # BT 페이즈 수 조절 (비례제어)
                 allocationRA_RU()
                 checkBusyTone() # 비지톤 phase 추가
                 checkCollision()
