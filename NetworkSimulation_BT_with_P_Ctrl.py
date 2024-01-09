@@ -89,29 +89,34 @@ def createSTA(USER):
         sta = Station()
         stationList.append(sta)
 
-def adjust_NUM_BT():
+def adjust_NUM_BT(): # TODO 비례 제어인데 충돌 비율이 고정되는 이유 찾기.
     # NUM_BT 비례제어
     # NUM_BT 최소값은 1
 
     global NUM_BT
 
     ERR_MARGIN = 0.03 # threshold
-    K = 1 # Gain
+    K = 5 # Gain
 
     # 1. calculate collision rate (패킷 단위 성능)
 
     col_rate = 0
 
     if(Stats_PKT_TX_Trial != 0):
-        col_rate = ((Stats_PKT_Collision / Stats_PKT_TX_Trial) * 100)
-
+        col_rate = round((Stats_PKT_Collision / Stats_PKT_TX_Trial), 2)
+    print("========================")
+    print("Collision rate: ", col_rate)
     # 2. 비례제어
-    error = col_rate - OPTIMAL_COL_RATE
+    error = round(col_rate - OPTIMAL_COL_RATE, 2)
+    print("ERROR: ", error)
 
-    if (error < -ERR_MARGIN) or (ERR_MARGIN < error):
+    print("Pre NUM_BT: ", NUM_BT)
+    print("========================")
+    if (error < -ERR_MARGIN) or (ERR_MARGIN < error): # threshold value 절댓값
 
-        NUM_BT = NUM_BT * (1 + K * error)
+        NUM_BT = round(NUM_BT * (1 + K * error), 2)
 
+    print("** NUM_BT: ", NUM_BT)
     # 3. 최대, 최소값 필터링
     NUM_BT = int(NUM_BT)
 
@@ -173,6 +178,13 @@ def checkBusyTone():
     for sta in stationList:
         if (sta.tx_status == True):
             if(sta.bt_priority > min_priority_list[int(sta.ru)]):
+
+                sta.retry += 1
+                if (sta.retry >= RETRY_BS):  # 해당 패킷 폐기 및 변수 값 초기화
+                    sta.cw = MIN_OCW  # 초기 OCW
+                    sta.retry = 0
+                    sta.delay = 0
+
                 # 전송 포기
                 sta.tx_status = False
                 sta.suc_status = False
