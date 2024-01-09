@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 
 NUM_SIM = 1  # 시뮬레이션 반복 수
 NUM_DTI = 100000  # 1번 시뮬레이션에서 수행될 Data Transmission Interval 수
+simulation_list = []    # 총 모든 시뮬레이션 결과 리스트
 
 # AP set
 SIFS = 16
@@ -79,7 +80,6 @@ def createSTA(USER):
 
 
 def allocationRA_RU():
-    ebo = random.randrange(0, RU)
     for sta in stationList:
         if (sta.bo <= 0):  # 백오프 타이머가 0보다 작아졌을 때
             sta.tx_status = True  # 전송 시도
@@ -238,7 +238,7 @@ def print_graph():
 
     #PKS 속도
     plt.subplot(231)
-    plt.plot(x_list, PKS_throughput_results, color='blue', marker='o')
+    plt.plot(x_list, PKS_throughput_results, color='red', marker='o')
     plt.title('Packet Throughput')
     plt.xlabel('Number or STA')
     plt.ylabel('throughput')
@@ -253,7 +253,7 @@ def print_graph():
 
     #PKS 지연
     plt.subplot(233)
-    plt.plot(x_list, PKS_dealy_results, color='yellow', marker='o')
+    plt.plot(x_list, PKS_dealy_results, color='red', marker='o')
     plt.title('Packet delay')
     plt.xlabel('Number or STA')
     plt.ylabel('delay')
@@ -261,7 +261,7 @@ def print_graph():
 
     #RU idle 비율
     plt.subplot(234)
-    plt.plot(x_list, RU_idle_results, color='green', marker='o')
+    plt.plot(x_list, RU_idle_results, color='red', marker='o')
     plt.title('RU idle rate')
     plt.xlabel('Number or STA')
     plt.ylabel('idle rate')
@@ -269,7 +269,7 @@ def print_graph():
 
     #RU 성공률
     plt.subplot(235)
-    plt.plot(x_list, RU_Success_results, color='black', marker='o')
+    plt.plot(x_list, RU_Success_results, color='red', marker='o')
     plt.title('RU Success rate')
     plt.xlabel('Number or STA')
     plt.ylabel('success rate')
@@ -277,7 +277,7 @@ def print_graph():
 
     #RU 충돌율
     plt.subplot(236)
-    plt.plot(x_list, RU_coll_results, color='pink', marker='o')
+    plt.plot(x_list, RU_coll_results, color='red', marker='o')
     plt.title('RU collision rate')
     plt.xlabel('Number or STA')
     plt.ylabel('collision rate')
@@ -285,6 +285,18 @@ def print_graph():
 
     plt.show()
     plt.close()
+
+def save():
+    global simulation_list
+
+    simulation_list.append(PKS_throughput_results)
+    simulation_list.append(PKS_coll_results)
+    simulation_list.append(PKS_dealy_results)
+    simulation_list.append(RU_idle_results)
+    simulation_list.append(RU_Success_results)
+    simulation_list.append(RU_coll_results)
+
+    np.save('E:\Seminar\OBO',simulation_list)
 
 def resultClear():
 
@@ -325,7 +337,8 @@ def main():
                 addStats()
                 changeStaVariables()
         print_Performance()
-    print_graph()
+    # print_graph()
+    save()
 main()
 
 # def main():

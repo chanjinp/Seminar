@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 
 
 NUM_SIM = 1  # 시뮬레이션 반복 수
-NUM_DTI = 100000  # 1번 시뮬레이션에서 수행될 Data Transmission Interval 수
+NUM_DTI = 10000  # 1번 시뮬레이션에서 수행될 Data Transmission Interval 수
+simulation_list = []    # 총 모든 시뮬레이션 결과 리스트
 
 # AP set
 SIFS = 16
@@ -92,11 +93,17 @@ def adjust_NUM_BT():
     # NUM_BT 비례제어
     # NUM_BT 최소값은 1
 
+    global NUM_BT
+
     ERR_MARGIN = 0.03 # threshold
     K = 1 # Gain
 
     # 1. calculate collision rate (패킷 단위 성능)
-    col_rate = (Stats_PKT_Collision / Stats_PKT_TX_Trial) * 100
+
+    col_rate = 0
+
+    if(Stats_PKT_TX_Trial != 0):
+        col_rate = ((Stats_PKT_Collision / Stats_PKT_TX_Trial) * 100)
 
     # 2. 비례제어
     error = col_rate - OPTIMAL_COL_RATE
@@ -142,7 +149,9 @@ def checkCollision():
             incRUCollision()  # 위의 경우에 제외된 경우에는 충돌이 일어났음
 
 def checkBusyTone():
-    
+
+    global NUM_BT_ACC
+
     if NUM_BT == 1:
         return
     
@@ -349,6 +358,18 @@ def print_graph():
     plt.show()
     plt.close()
 
+def save():
+    global simulation_list
+
+    simulation_list.append(PKS_throughput_results)
+    simulation_list.append(PKS_coll_results)
+    simulation_list.append(PKS_dealy_results)
+    simulation_list.append(RU_idle_results)
+    simulation_list.append(RU_Success_results)
+    simulation_list.append(RU_coll_results)
+
+    np.save('E:\Seminar\EBO_CTRL',simulation_list)
+
 def resultClear():
 
     global Stats_PKT_TX_Trial
@@ -390,7 +411,8 @@ def main():
                 addStats()
                 changeStaVariables()
         print_Performance()
-    print_graph()
+    # print_graph()
+    save()
 main()
 
 # def main():

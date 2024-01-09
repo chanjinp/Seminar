@@ -6,9 +6,9 @@ from turtle import color
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 NUM_SIM = 1  # 시뮬레이션 반복 수
 NUM_DTI = 100000  # 1번 시뮬레이션에서 수행될 Data Transmission Interval 수
+simulation_list = []    # 총 모든 시뮬레이션 결과 리스트
 
 # AP set
 SIFS = 16
@@ -35,7 +35,8 @@ BA_SZ_us = (BA_SIZE * 8) / (DATA_RATE * 1000)  # 블록 ACK 전송 시간, 단�
 BT_us = 9 # us
 NUM_BT = NUM_RU
 
-TWT_INTERVAL = (BT_us * NUM_BT) + (DIFS + TF_SZ_us + SIFS * 2 + DTI + BA_SZ_us)  # DIFS + 트리거 프레임 전송 시간 + SIFS + DTI + SIFS + Block Ack 전송 시간 => 전체 TWT 시간
+TWT_INTERVAL = (BT_us * NUM_BT) + (DIFS + TF_SZ_us + SIFS * 2 + DTI + BA_SZ_us)
+# [ 각 BusyTone 신호를 보내는 슬롯의 시간 * 슬롯의 개수 ]+ DIFS + 트리거 프레임 전송 시간 + SIFS + DTI + SIFS + Block Ack 전송 시간 => 전체 TWT 시간
 
 # 성능 변수
 # 패킷 단위 성능
@@ -114,7 +115,7 @@ def checkCollision():
 
 def checkBusyTone():
     
-    min_obo_list = []
+    min_obo_list = []   # 각 RU의 OBO 감소하고 남은 값들을 리스트로 관리
     for i in range(0, NUM_RU):
         min_obo_list.append(0)
 
@@ -122,18 +123,25 @@ def checkBusyTone():
     for sta in stationList:
         if (sta.tx_status == True):
             if(sta.bo < min_obo_list[int(sta.ru)]):
-                min_obo_list[int(sta.ru)] = sta.bo
+                min_obo_list[int(sta.ru)] = sta.bo  # 각 RU에 최소 우선순위를 갱신
     
     # MIN OBO에 해당하는 STA만 전송을 시도하고, 나머지는 전송 포기
     # 전송을 포기한 STA는 동일한 OCW 범위 내에서 랜덤하게 OBO를 초기화
     for sta in stationList:
         if (sta.tx_status == True):
-            if(sta.bo > min_obo_list[int(sta.ru)]):
+            if(sta.bo > min_obo_list[int(sta.ru)]): # 자신의 EBO 값이 최소 우선순위보다 큰 경우에는 전송을 포기
+
+                sta.retry += 1
+                if (sta.retry >= RETRY_BS):  # 해당 패킷 폐기 및 변수 값 초기화
+                    sta.cw = MIN_OCW  # 초기 OCW
+                    sta.retry = 0
+                    sta.delay = 0
+
                 # 전송 포기
                 sta.tx_status = False
                 sta.suc_status = False
 
-                # OBO 초기화
+                # OBO 초기화 # 전송을 포기한 STA는 OCW 값을 유지한 채로 새로 OBO 값을 선택한다
                 sta.bo = random.randrange(0, sta.cw)
 
 
@@ -310,9 +318,21 @@ def print_graph():
     plt.xlabel('Number or STA')
     plt.ylabel('collision rate')
 
-
     plt.show()
     plt.close()
+
+def save():
+    global simulation_list
+
+    simulation_list.append(PKS_throughput_results)
+    simulation_list.append(PKS_coll_results)
+    simulation_list.append(PKS_dealy_results)
+    simulation_list.append(RU_idle_results)
+    simulation_list.append(RU_Success_results)
+    simulation_list.append(RU_coll_results)
+
+    np.save('E:\Seminar\EBO',simulation_list)
+
 
 def resultClear():
 
@@ -334,7 +354,6 @@ def resultClear():
     Stats_RU_Success = 0
     Stats_RU_Collision = 0
 
-
 def main():
     global USER_MAX
     global current_User
@@ -349,12 +368,13 @@ def main():
             for j in range(0, NUM_DTI):
                 incTrial()
                 allocationRA_RU()
-                checkBusyTone() # 비지톤 phase 추가
+                checkBusyTone() # Busytone phase 추가
                 checkCollision()
                 addStats()
                 changeStaVariables()
         print_Performance()
-    print_graph()
+    # print_graph()
+    save()
 main()
 
 # def main():
