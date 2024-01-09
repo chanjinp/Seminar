@@ -122,6 +122,8 @@ def adjust_NUM_BT(): # TODO 비례 제어인데 충돌 비율이 고정되는 �
 
     if (NUM_BT < 1):
         NUM_BT = 1
+    if (NUM_BT > 50):
+        NUM_BT = 50
 
 def allocationRA_RU():
     for sta in stationList:
@@ -162,7 +164,7 @@ def checkBusyTone():
     
     NUM_BT_ACC += (NUM_BT)
 
-    # 우선순위가 작으수록 높은 것이다
+    # 우선순위가 작을수록 높은 것이다
     min_priority_list = []
     for i in range(0, NUM_RU):
         min_priority_list.append(NUM_BT - 1)
@@ -392,6 +394,7 @@ def resultClear():
     global Stats_RU_Idle
     global Stats_RU_Success
     global Stats_RU_Collision
+    global NUM_BT_ACC
 
     Stats_PKT_TX_Trial = 0
     Stats_PKT_Success = 0
@@ -401,6 +404,7 @@ def resultClear():
     Stats_RU_Idle = 0
     Stats_RU_Success = 0
     Stats_RU_Collision = 0
+    NUM_BT_ACC = 0
 
 
 def main():
