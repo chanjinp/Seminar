@@ -6,10 +6,9 @@ from turtle import color
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 NUM_SIM = 1  # 시뮬레이션 반복 수
-NUM_DTI = 10000  # 1번 시뮬레이션에서 수행될 Data Transmission Interval 수
-simulation_list = []    # 총 모든 시뮬레이션 결과 리스트
+NUM_DTI = 100000  # 1번 시뮬레이션에서 수행될 Data Transmission Interval 수
+simulation_list = []  # 총 모든 시뮬레이션 결과 리스트
 
 # AP set
 SIFS = 16
@@ -33,15 +32,11 @@ TF_SZ_us = (TF_SIZE * 8) / (DATA_RATE * 1000)  # 트리거 프레임 전송 시�
 BA_SZ_us = (BA_SIZE * 8) / (DATA_RATE * 1000)  # 블록 ACK 전송 시간, 단위: us
 
 # BusyTone
-BT_us = 9 # us
-NUM_BT = 1 # 각 STA은 해당 변수에 맞춰 BT 경쟁을 수행함
-# NUM_BT == 1 --> BT 사용 X
-# NUM_BT > 1  --> BT 사용 O
-NUM_BT_ACC = 0 # throughput 계산 시 BT overhead 계산을 위해 사용되는 변수
+BT_us = 9  # us
+NUM_BT = NUM_RU
 
-OPTIMAL_COL_RATE = 0.6 # 패킷 단위 성능
-
-TWT_INTERVAL = (DIFS + TF_SZ_us + SIFS * 2 + DTI + BA_SZ_us)  # DIFS + 트리거 프레임 전송 시간 + SIFS + DTI + SIFS + Block Ack 전송 시간 => 전체 TWT 시간
+TWT_INTERVAL = (BT_us * NUM_BT) + (DIFS + TF_SZ_us + SIFS * 2 + DTI + BA_SZ_us)
+# [ 각 BusyTone 신호를 보내는 슬롯의 시간 * 슬롯의 개수 ]+ DIFS + 트리거 프레임 전송 시간 + SIFS + DTI + SIFS + Block Ack 전송 시간 => 전체 TWT 시간
 
 # 성능 변수
 # 패킷 단위 성능
@@ -71,6 +66,7 @@ RU_coll_results = []
 # graph x
 x_list = []
 
+
 class Station:
     def __init__(self):
         self.ru = 0  # 할당된 RU
@@ -81,7 +77,6 @@ class Station:
         self.delay = 0
         self.retry = 0
         self.data_size = 0  # 데이터 사이즈 (bytes)
-        self.bt_priority = 0 # 비지톤 우선순위
 
 
 def createSTA(USER):
@@ -89,48 +84,12 @@ def createSTA(USER):
         sta = Station()
         stationList.append(sta)
 
-def adjust_NUM_BT(): # TODO 비례 제어인데 충돌 비율이 고정되는 이유 찾기.
-    # NUM_BT 비례제어
-    # NUM_BT 최소값은 1
-
-    global NUM_BT
-
-    ERR_MARGIN = 0.03 # threshold
-    K = 5 # Gain
-
-    # 1. calculate collision rate (패킷 단위 성능)
-
-    col_rate = 0
-
-    if(Stats_PKT_TX_Trial != 0):
-        col_rate = round((Stats_PKT_Collision / Stats_PKT_TX_Trial), 2)
-    print("========================")
-    print("Collision rate: ", col_rate)
-    # 2. 비례제어
-    error = round(col_rate - OPTIMAL_COL_RATE, 2)
-    print("ERROR: ", error)
-
-    print("Pre NUM_BT: ", NUM_BT)
-    print("========================")
-    if (error < -ERR_MARGIN) or (ERR_MARGIN < error): # threshold value 절댓값
-
-        NUM_BT = round(NUM_BT * (1 + K * error), 2)
-
-    print("** NUM_BT: ", NUM_BT)
-    # 3. 최대, 최소값 필터링
-    NUM_BT = int(NUM_BT)
-
-    if (NUM_BT < 1):
-        NUM_BT = 1
-    if (NUM_BT > 50):
-        NUM_BT = 50
 
 def allocationRA_RU():
     for sta in stationList:
         if (sta.bo <= 0):  # 백오프 타이머가 0보다 작아졌을 때
             sta.tx_status = True  # 전송 시도
             sta.ru = random.randrange(0, NUM_RU)  # 랜덤으로 RU 할당
-            sta.bt_priority = random.randrange(0, NUM_BT) # 비지톤 우선순위 할당
         else:
             sta.bo -= NUM_RU  # 백오프타이머 감소 [RU의 수만큼 점차 감소]
             sta.tx_status = False  # 전송 시도 하지 않음.
@@ -155,31 +114,23 @@ def checkCollision():
             setCollision(i)
             incRUCollision()  # 위의 경우에 제외된 경우에는 충돌이 일어났음
 
+
 def checkBusyTone():
-
-    global NUM_BT_ACC
-
-    if NUM_BT == 1:
-        return
-    
-    NUM_BT_ACC += (NUM_BT)
-
-    # 우선순위가 작을수록 높은 것이다
-    min_priority_list = []
+    min_obo_list = []  # 각 RU의 OBO 감소하고 남은 값들을 리스트로 관리
     for i in range(0, NUM_RU):
-        min_priority_list.append(NUM_BT - 1)
+        min_obo_list.append(0)
 
     # 각 RU에서 경쟁에서 승리할 수 있는 OBO 값 파악
     for sta in stationList:
         if (sta.tx_status == True):
-            if(sta.bt_priority < min_priority_list[int(sta.ru)]):
-                min_priority_list[int(sta.ru)] = sta.bt_priority
-    
+            if (sta.bo < min_obo_list[int(sta.ru)]):
+                min_obo_list[int(sta.ru)] = sta.bo  # 각 RU에 최소 우선순위를 갱신
+
     # MIN OBO에 해당하는 STA만 전송을 시도하고, 나머지는 전송 포기
     # 전송을 포기한 STA는 동일한 OCW 범위 내에서 랜덤하게 OBO를 초기화
     for sta in stationList:
         if (sta.tx_status == True):
-            if(sta.bt_priority > min_priority_list[int(sta.ru)]):
+            if (sta.bo > min_obo_list[int(sta.ru)]):  # 자신의 EBO 값이 최소 우선순위보다 큰 경우에는 전송을 포기
 
                 sta.retry += 1
                 if (sta.retry >= RETRY_BS):  # 해당 패킷 폐기 및 변수 값 초기화
@@ -191,7 +142,7 @@ def checkBusyTone():
                 sta.tx_status = False
                 sta.suc_status = False
 
-                # OBO 초기화
+                # OBO 초기화 # 전송을 포기한 STA는 OCW 값을 유지한 채로 새로 OBO 값을 선택한다
                 sta.bo = random.randrange(0, sta.cw)
 
 
@@ -281,7 +232,7 @@ def changeStaVariables():
 
 def print_Performance():
     PKS_coll_rate = (Stats_PKT_Collision / Stats_PKT_TX_Trial) * 100
-    PKS_throughput = (Stats_PKT_Success * PACKET_SIZE * 8) / ((NUM_BT_ACC * BT_us) + (NUM_SIM * NUM_DTI * TWT_INTERVAL)) # BusyTone overhead 합산
+    PKS_throughput = (Stats_PKT_Success * PACKET_SIZE * 8) / (NUM_SIM * NUM_DTI * TWT_INTERVAL)
     PKS_delay = (Stats_PKT_Delay / Stats_PKT_Success) * TWT_INTERVAL
 
     print("[패킷 단위 성능]")
@@ -317,60 +268,56 @@ def print_Performance():
 
 
 def print_graph():
-    for i in range(1, USER_MAX+1):
-        x_list.append(i) #x축 리스트 세팅
+    for i in range(1, USER_MAX + 1):
+        x_list.append(i)  # x축 리스트 세팅
 
-    plt.figure(figsize=(20,10))
+    plt.figure(figsize=(20, 10))
 
-    #PKS 속도
+    # PKS 속도
     plt.subplot(231)
     plt.plot(x_list, PKS_throughput_results, color='blue', marker='o')
     plt.title('Packet Throughput')
     plt.xlabel('Number or STA')
     plt.ylabel('throughput')
 
-    #PKS 충돌율
+    # PKS 충돌율
     plt.subplot(232)
     plt.plot(x_list, PKS_coll_results, color='red', marker='o')
     plt.title('Packet Collision Rate')
     plt.xlabel('Number or STA')
     plt.ylabel('collision rate')
 
-
-    #PKS 지연
+    # PKS 지연
     plt.subplot(233)
     plt.plot(x_list, PKS_dealy_results, color='yellow', marker='o')
     plt.title('Packet delay')
     plt.xlabel('Number or STA')
     plt.ylabel('delay')
 
-
-    #RU idle 비율
+    # RU idle 비율
     plt.subplot(234)
     plt.plot(x_list, RU_idle_results, color='green', marker='o')
     plt.title('RU idle rate')
     plt.xlabel('Number or STA')
     plt.ylabel('idle rate')
 
-
-    #RU 성공률
+    # RU 성공률
     plt.subplot(235)
     plt.plot(x_list, RU_Success_results, color='black', marker='o')
     plt.title('RU Success rate')
     plt.xlabel('Number or STA')
     plt.ylabel('success rate')
 
-
-    #RU 충돌율
+    # RU 충돌율
     plt.subplot(236)
     plt.plot(x_list, RU_coll_results, color='pink', marker='o')
     plt.title('RU collision rate')
     plt.xlabel('Number or STA')
     plt.ylabel('collision rate')
 
-
     plt.show()
     plt.close()
+
 
 def save():
     global simulation_list
@@ -382,10 +329,10 @@ def save():
     simulation_list.append(RU_Success_results)
     simulation_list.append(RU_coll_results)
 
-    np.save('E:\Seminar\EBO_CTRL',simulation_list)
+    np.save('E:\Seminar\EBO', simulation_list)
+
 
 def resultClear():
-
     global Stats_PKT_TX_Trial
     global Stats_PKT_Success
     global Stats_PKT_Collision
@@ -394,7 +341,6 @@ def resultClear():
     global Stats_RU_Idle
     global Stats_RU_Success
     global Stats_RU_Collision
-    global NUM_BT_ACC
 
     Stats_PKT_TX_Trial = 0
     Stats_PKT_Success = 0
@@ -404,14 +350,13 @@ def resultClear():
     Stats_RU_Idle = 0
     Stats_RU_Success = 0
     Stats_RU_Collision = 0
-    NUM_BT_ACC = 0
 
 
 def main():
     global USER_MAX
     global current_User
     USER_MAX = 100
-    for i in range(1, USER_MAX+1):
+    for i in range(1, USER_MAX + 1):
         print("======" + str(i) + "번" + "======")
         current_User = i
         resultClear()  # 결과들 초기화하는 함수
@@ -420,15 +365,16 @@ def main():
             createSTA(i)  # User의 수가 1일 때부터 100일 때까지 반복
             for j in range(0, NUM_DTI):
                 incTrial()
-                adjust_NUM_BT() # BT 페이즈 수 조절 (비례제어)
                 allocationRA_RU()
-                checkBusyTone() # 비지톤 phase 추가
+                checkBusyTone()  # Busytone phase 추가
                 checkCollision()
                 addStats()
                 changeStaVariables()
         print_Performance()
     # print_graph()
     save()
+
+
 main()
 
 # def main():
