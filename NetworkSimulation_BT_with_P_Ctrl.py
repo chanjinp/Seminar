@@ -62,7 +62,7 @@ stationList = []
 # PKS Result 관리 목록
 PKS_throughput_results = []
 PKS_coll_results = []
-PKS_dealy_results = []
+PKS_delay_results = []
 # RU Result 관리 목록
 RU_idle_results = []
 RU_Success_results = []
@@ -95,35 +95,28 @@ def adjust_NUM_BT(): # TODO 비례 제어인데 충돌 비율이 고정되는 �
 
     global NUM_BT
 
-    ERR_MARGIN = 0.03 # threshold
+    ERR_MARGIN = 0.05 # threshold
     K = 5 # Gain
 
     # 1. calculate collision rate (패킷 단위 성능)
 
     col_rate = 0
 
-    if(Stats_PKT_TX_Trial != 0):
+    if(Stats_PKT_TX_Trial != 0): # 전송 시도의 수가 0이 아니라면
         col_rate = round((Stats_PKT_Collision / Stats_PKT_TX_Trial), 2)
-    print("========================")
-    print("Collision rate: ", col_rate)
+
     # 2. 비례제어
     error = round(col_rate - OPTIMAL_COL_RATE, 2)
-    print("ERROR: ", error)
 
-    print("Pre NUM_BT: ", NUM_BT)
-    print("========================")
     if (error < -ERR_MARGIN) or (ERR_MARGIN < error): # threshold value 절댓값
 
-        NUM_BT = round(NUM_BT * (1 + K * error), 2)
+        NUM_BT = int((NUM_BT * (1 + K * error)))
 
-    print("** NUM_BT: ", NUM_BT)
     # 3. 최대, 최소값 필터링
-    NUM_BT = int(NUM_BT)
+    print("**NUM_BT: %d **\n", NUM_BT)
 
     if (NUM_BT < 1):
         NUM_BT = 1
-    if (NUM_BT > 50):
-        NUM_BT = 50
 
 def allocationRA_RU():
     for sta in stationList:
@@ -309,7 +302,7 @@ def print_Performance():
 
     PKS_coll_results.append(PKS_coll_rate)
     PKS_throughput_results.append(PKS_throughput)
-    PKS_dealy_results.append(PKS_delay)
+    PKS_delay_results.append(PKS_delay)
 
     RU_idle_results.append(RU_idle_rate)
     RU_Success_results.append(RU_Success_rate)
@@ -339,7 +332,7 @@ def print_graph():
 
     #PKS 지연
     plt.subplot(233)
-    plt.plot(x_list, PKS_dealy_results, color='yellow', marker='o')
+    plt.plot(x_list, PKS_delay_results, color='yellow', marker='o')
     plt.title('Packet delay')
     plt.xlabel('Number or STA')
     plt.ylabel('delay')
@@ -377,13 +370,13 @@ def save():
 
     simulation_list.append(PKS_throughput_results)
     simulation_list.append(PKS_coll_results)
-    simulation_list.append(PKS_dealy_results)
+    simulation_list.append(PKS_delay_results)
     simulation_list.append(RU_idle_results)
     simulation_list.append(RU_Success_results)
     simulation_list.append(RU_coll_results)
 
-    np.save('E:\Seminar\EBO_CTRL',simulation_list)
-
+    # np.save('E:\Seminar\EBO_CTRL',simulation_list)
+    np.save('E:\Pycharm\Seminar\EBO_CTRL', simulation_list)
 def resultClear():
 
     global Stats_PKT_TX_Trial
