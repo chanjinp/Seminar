@@ -34,7 +34,7 @@ BA_SZ_us = (BA_SIZE * 8) / (DATA_RATE * 1000)  # 블록 ACK 전송 시간, 단�
 
 # BusyTone
 BT_us = 9 # us
-NUM_BT = 1 # 각 STA은 해당 변수에 맞춰 BT 경쟁을 수행함
+NUM_BT = NUM_RU # 각 STA은 해당 변수에 맞춰 BT 경쟁을 수행함
 # NUM_BT == 1 --> BT 사용 X
 # NUM_BT > 1  --> BT 사용 O
 NUM_BT_ACC = 0 # throughput 계산 시 BT overhead 계산을 위해 사용되는 변수
@@ -89,14 +89,15 @@ def createSTA(USER):
         sta = Station()
         stationList.append(sta)
 
-def adjust_NUM_BT(): # TODO 비례 제어인데 충돌 비율이 고정되는 이유 찾기.
+def adjust_NUM_BT():
     # NUM_BT 비례제어
     # NUM_BT 최소값은 1
 
     global NUM_BT
+    global NUM_BT_ACC
 
-    ERR_MARGIN = 0.05 # threshold
-    K = 5 # Gain
+    ERR_MARGIN = 0.03 # threshold
+    K = 8 # Gain
 
     # 1. calculate collision rate (패킷 단위 성능)
 
@@ -110,13 +111,17 @@ def adjust_NUM_BT(): # TODO 비례 제어인데 충돌 비율이 고정되는 �
 
     if (error < -ERR_MARGIN) or (ERR_MARGIN < error): # threshold value 절댓값
 
-        NUM_BT = int((NUM_BT * (1 + K * error)))
+        NUM_BT = int(NUM_BT * (1 + K * error))
 
     # 3. 최대, 최소값 필터링
-    print("**NUM_BT: %d **\n", NUM_BT)
 
     if (NUM_BT < 1):
         NUM_BT = 1
+    if (NUM_BT > 10):
+        NUM_BT = 10
+
+    if(NUM_BT > 1):
+        NUM_BT_ACC += NUM_BT
 
 def allocationRA_RU():
     for sta in stationList:
@@ -150,12 +155,8 @@ def checkCollision():
 
 def checkBusyTone():
 
-    global NUM_BT_ACC
-
     if NUM_BT == 1:
         return
-
-    NUM_BT_ACC += (NUM_BT)
 
     # 우선순위가 작을수록 높은 것이다
     min_priority_list = []
@@ -277,6 +278,9 @@ def print_Performance():
     PKS_throughput = (Stats_PKT_Success * PACKET_SIZE * 8) / ((NUM_BT_ACC * BT_us) + (NUM_SIM * NUM_DTI * TWT_INTERVAL)) # BusyTone overhead 합산
     PKS_delay = (Stats_PKT_Delay / Stats_PKT_Success) * TWT_INTERVAL
 
+    print("[BusyTone 사용 개수]")
+    print("NUM_BT_ACC: ", NUM_BT_ACC)
+
     print("[패킷 단위 성능]")
     print("전송 시도 수 : ", Stats_PKT_TX_Trial)
     print("전송 성공 수 : ", Stats_PKT_Success)
@@ -375,8 +379,8 @@ def save():
     simulation_list.append(RU_Success_results)
     simulation_list.append(RU_coll_results)
 
-    # np.save('E:\Seminar\EBO_CTRL',simulation_list)
-    np.save('E:\Pycharm\Seminar\EBO_CTRL', simulation_list)
+    np.save('E:\Seminar\EBO_CTRL',simulation_list)
+    # np.save('E:\Pycharm\Seminar\EBO_CTRL', simulation_list)
 def resultClear():
 
     global Stats_PKT_TX_Trial
@@ -388,6 +392,7 @@ def resultClear():
     global Stats_RU_Success
     global Stats_RU_Collision
     global NUM_BT_ACC
+    global NUM_BT
 
     Stats_PKT_TX_Trial = 0
     Stats_PKT_Success = 0
@@ -398,6 +403,7 @@ def resultClear():
     Stats_RU_Success = 0
     Stats_RU_Collision = 0
     NUM_BT_ACC = 0
+    NUM_BT = 0
 
 
 def main():
