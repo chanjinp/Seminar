@@ -430,26 +430,3 @@ def main():
     save()
 main()
 
-# def main():
-#     global current_User
-#     current_User = 5
-#     for i in range(0, NUM_SIM):
-#         # 시뮬레이션 반복할 때마다 모든 노드 삭제 후 재 생성
-#         stationList.clear()  # 모든 노드 삭제
-#         createSTA(current_User)  # 노드 생성
-#
-#         for j in range(0, NUM_DTI):
-#             # k = 0
-#             # for sta in stationList:
-#             #    print("ID: ", k, "BO: ", sta.bo)
-#             #    k += 1
-#
-#             incTrial()
-#             allocationRA_RU()
-#             checkCollision()
-#             addStats()
-#             changeStaVariables()
-#
-#     print_Performance()
-#
-# main()
