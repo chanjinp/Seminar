@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-NUM_SIM = 1  # 시뮬레이션 반복 수
+NUM_SIM = 10  # 시뮬레이션 반복 수
 NUM_DTI = 100000  # 1번 시뮬레이션에서 수행될 Data Transmission Interval 수
 simulation_list = []    # 총 모든 시뮬레이션 결과 리스트
 
@@ -274,7 +274,7 @@ def changeStaVariables():
                 sta.suc_status = False  # True 전송 성공, False 전송 실패(충돌)
 
 
-def print_Performance(User):
+def print_Performance():
 
     PKS_coll_rate = (Stats_PKT_Collision / Stats_PKT_TX_Trial) * 100
     PKS_throughput = (Stats_PKT_Success * PACKET_SIZE * 8) / ((NUM_BT_ACC * BT_us) + (NUM_SIM * NUM_DTI * TWT_INTERVAL)) # BusyTone overhead 합산
@@ -313,7 +313,6 @@ def print_Performance(User):
     RU_idle_results.append(RU_idle_rate)
     RU_Success_results.append(RU_Success_rate)
     RU_coll_results.append(RU_Collision_rate)
-    Station_results.append(User)
 
 
 def print_graph():
@@ -381,10 +380,9 @@ def save():
     simulation_list.append(RU_idle_results)
     simulation_list.append(RU_Success_results)
     simulation_list.append(RU_coll_results)
-    simulation_list.append(Station_results)
 
-    np.save('E:\Seminar\EBO_CTRLV2',simulation_list)
-    # np.save('E:\Pycharm\Seminar\EBO_CTRLV2', simulation_list)
+    np.save('E:\Seminar\EBO_CTRL_V2',simulation_list)
+    # np.save('E:\Pycharm\Seminar\EBO_CTRL_V2', simulation_list)
 def resultClear():
 
     global Stats_PKT_TX_Trial
@@ -426,7 +424,6 @@ def main():
         for j in range(1, NUM_DTI + 1):
 
             if (j % 1000 == 0):  # DTI가 1000을 기준으로 나머지가 0인 경우
-                print_Performance(current_User)
                 end += 20
 
                 if (end > USER_MAX):
@@ -443,6 +440,7 @@ def main():
             checkCollision()
             addStats()
             changeStaVariables()
+        print_Performance()
         save()
         resultClear()  # 결과들 초기화하는 함수
 
