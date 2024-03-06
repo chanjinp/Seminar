@@ -347,6 +347,7 @@ def main():
             changeStaVariables()
         print_Performance()
         save()
+        resultClear()
 
 
 main()
