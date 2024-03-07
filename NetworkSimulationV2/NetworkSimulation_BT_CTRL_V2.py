@@ -69,6 +69,9 @@ RU_Success_results = []
 RU_coll_results = []
 Station_results = []
 
+# user
+user_list = [5, 20, 94, 17, 56, 72, 3, 41, 88, 23, 65, 10, 35, 50, 78, 99, 12, 7, 82, 30, 61, 45, 25, 98, 81, 69, 14, 49, 26, 68, 52, 39, 87, 16, 9, 80, 47, 2, 60, 75, 31, 96, 71, 18, 83, 86, 29, 38, 55, 57, 85, 73, 91, 62, 53, 19, 8, 93, 36, 63, 95, 5, 22, 90, 76, 15, 67, 1, 59, 44, 89, 32, 28, 77, 20, 70, 33, 48, 58, 11, 64, 92, 6, 27, 84, 74, 51, 97, 34, 21, 42, 4, 79, 40, 24, 66, 37, 43, 54, 100, 46]
+
 # graph x
 x_list = []
 
@@ -280,6 +283,10 @@ def print_Performance():
     PKS_throughput = (Stats_PKT_Success * PACKET_SIZE * 8) / ((NUM_BT_ACC * BT_us) + (NUM_SIM * NUM_DTI * TWT_INTERVAL)) # BusyTone overhead 합산
     PKS_delay = (Stats_PKT_Delay / Stats_PKT_Success) * TWT_INTERVAL
 
+    RU_idle_rate = (Stats_RU_Idle / Stats_RU_TX_Trial) * 100
+    RU_Success_rate = (Stats_RU_Success / Stats_RU_TX_Trial) * 100
+    RU_Collision_rate = (Stats_RU_Collision / Stats_RU_TX_Trial) * 100
+
     print("[BusyTone 사용 개수]")
     print("NUM_BT_ACC: ", NUM_BT_ACC)
 
@@ -295,9 +302,7 @@ def print_Performance():
 
     # print(TWT_INTERVAL)
     print("[RU 단위 성능]")
-    RU_idle_rate = (Stats_RU_Idle / Stats_RU_TX_Trial) * 100
-    RU_Success_rate = (Stats_RU_Success / Stats_RU_TX_Trial) * 100
-    RU_Collision_rate = (Stats_RU_Collision / Stats_RU_TX_Trial) * 100
+
     print("전송 시도 수 : ", Stats_RU_TX_Trial)
     print("전송 성공 수 : ", Stats_RU_Success)
     print("전송 실패 수 : ", Stats_RU_Collision)
@@ -313,63 +318,6 @@ def print_Performance():
     RU_idle_results.append(RU_idle_rate)
     RU_Success_results.append(RU_Success_rate)
     RU_coll_results.append(RU_Collision_rate)
-
-
-def print_graph():
-    for i in range(1, USER_MAX+1):
-        x_list.append(i) #x축 리스트 세팅
-
-    plt.figure(figsize=(20,10))
-
-    #PKS 속도
-    plt.subplot(231)
-    plt.plot(x_list, PKS_throughput_results, color='blue', marker='o')
-    plt.title('Packet Throughput')
-    plt.xlabel('Number or STA')
-    plt.ylabel('throughput')
-
-    #PKS 충돌율
-    plt.subplot(232)
-    plt.plot(x_list, PKS_coll_results, color='red', marker='o')
-    plt.title('Packet Collision Rate')
-    plt.xlabel('Number or STA')
-    plt.ylabel('collision rate')
-
-
-    #PKS 지연
-    plt.subplot(233)
-    plt.plot(x_list, PKS_delay_results, color='yellow', marker='o')
-    plt.title('Packet delay')
-    plt.xlabel('Number or STA')
-    plt.ylabel('delay')
-
-
-    #RU idle 비율
-    plt.subplot(234)
-    plt.plot(x_list, RU_idle_results, color='green', marker='o')
-    plt.title('RU idle rate')
-    plt.xlabel('Number or STA')
-    plt.ylabel('idle rate')
-
-
-    #RU 성공률
-    plt.subplot(235)
-    plt.plot(x_list, RU_Success_results, color='black', marker='o')
-    plt.title('RU Success rate')
-    plt.xlabel('Number or STA')
-    plt.ylabel('success rate')
-
-
-    #RU 충돌율
-    plt.subplot(236)
-    plt.plot(x_list, RU_coll_results, color='pink', marker='o')
-    plt.title('RU collision rate')
-    plt.xlabel('Number or STA')
-    plt.ylabel('collision rate')
-
-
-    plt.show()
-    plt.close()
 
 def save():
     global simulation_list
@@ -411,25 +359,22 @@ def resultClear():
 def main():
     global USER_MAX
     global current_User
+    global NUM_BT_ACC
     USER_MAX = 100
-
     for k in range(0, NUM_SIM):  # 시뮬레이션 횟수
-        start = 1
-        end = 11
+        print("========"+str(k+1)+"=======")
+        NUM_BT_ACC = 0
+        idx = 0
 
-        current_User = random.randint(start, end)  # 1에서 10까지 초기 랜덤적으로 USER 구성
+        current_User = user_list[idx]
         stationList.clear()  # stationlist 초기화
         createSTA(current_User)
 
         for j in range(1, NUM_DTI + 1):
 
             if (j % 1000 == 0):  # DTI가 1000을 기준으로 나머지가 0인 경우
-                end += 20
-
-                if (end > USER_MAX):
-                    end = USER_MAX + 1
-
-                current_User = random.randint(start, end)
+                idx += 1
+                current_User = user_list[idx]
                 stationList.clear()  # stationlist 초기화
                 createSTA(current_User)
 
@@ -442,6 +387,6 @@ def main():
             changeStaVariables()
         print_Performance()
         save()
-        resultClear()  # 결과들 초기화하는 함수
+
 
 main()
